@@ -10,12 +10,23 @@ const generateToken = (userId) => {
   });
 };
 
-// @desc    Register new user
+// @desc    Stage 1: Initial Registration (Basic Info + Documents)
 // @route   POST /api/auth/register
 // @access  Public
 export const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, phoneNumber, role, contributorProfile, participantProfile } = req.body;
+    const { 
+      firstName, 
+      lastName, 
+      email, 
+      password, 
+      gender,
+      dateOfBirth,
+      identityDocument,
+      supportingDocument,
+      phoneNumber,
+      role 
+    } = req.body;
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -26,25 +37,20 @@ export const register = async (req, res) => {
       });
     }
 
-    // Create user object based on role
-    const userData = {
+    // Create user with Stage 1 data only
+    const user = await User.create({
       firstName,
       lastName,
       email,
       password,
+      gender,
+      dateOfBirth,
+      identityDocument,
+      supportingDocument,
       phoneNumber,
       role,
-    };
-
-    // Add profile data based on role
-    if (role === "contributor" && contributorProfile) {
-      userData.contributorProfile = contributorProfile;
-    } else if (role === "participant" && participantProfile) {
-      userData.participantProfile = participantProfile;
-    }
-
-    // Create user
-    const user = await User.create(userData);
+      profileCompleted: false, // Mark as incomplete
+    });
 
     // Generate verification token
     const verificationToken = user.generateVerificationToken();
@@ -55,27 +61,17 @@ export const register = async (req, res) => {
       await sendVerificationEmail(user, verificationToken);
     } catch (emailError) {
       console.error("Email sending failed:", emailError);
-      // Continue registration even if email fails
     }
 
-    // Generate JWT token
-    const token = generateToken(user._id);
-
-    // Send response
     res.status(201).json({
       success: true,
-      message: "Registration successful! Please check your email to verify your account.",
-      token,
+      message: "Registration successful! Please check your email to verify your account before logging in.",
+      needsVerification: true,
       user: {
-        id: user._id,
+        email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        email: user.email,
-        phoneNumber: user.phoneNumber,
-        role: user.role,
-        isVerified: user.isVerified,
-        contributorProfile: user.contributorProfile,
-        participantProfile: user.participantProfile,
+        isVerified: false,
       },
     });
   } catch (error) {
@@ -105,10 +101,8 @@ export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    // Hash the token to compare with database
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-    // Find user with this token and check expiry
     const user = await User.findOne({
       verificationToken: hashedToken,
       verificationTokenExpiry: { $gt: Date.now() },
@@ -136,56 +130,13 @@ export const verifyEmail = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Email verified successfully! You can now access all features.",
+      message: "Email verified successfully! You can now log in and complete your profile.",
     });
   } catch (error) {
     console.error("Verification error:", error);
     res.status(500).json({
       success: false,
       message: "Server error during verification",
-      error: error.message,
-    });
-  }
-};
-
-// @desc    Resend verification email
-// @route   POST /api/auth/resend-verification
-// @access  Public
-export const resendVerification = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is already verified",
-      });
-    }
-
-    // Generate new verification token
-    const verificationToken = user.generateVerificationToken();
-    await user.save();
-
-    // Send verification email
-    await sendVerificationEmail(user, verificationToken);
-
-    res.status(200).json({
-      success: true,
-      message: "Verification email sent! Please check your inbox.",
-    });
-  } catch (error) {
-    console.error("Resend verification error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to resend verification email",
       error: error.message,
     });
   }
@@ -221,12 +172,12 @@ export const login = async (req, res) => {
       });
     }
 
-    // Check if email is verified (optional - you can allow login without verification)
+    // Check if email is verified
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
         message: "Please verify your email before logging in. Check your inbox for the verification link.",
-        isVerified: false,
+        needsVerification: true,
       });
     }
 
@@ -242,8 +193,11 @@ export const login = async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         phoneNumber: user.phoneNumber,
+        gender: user.gender,
+        dateOfBirth: user.dateOfBirth,
         role: user.role,
         isVerified: user.isVerified,
+        profileCompleted: user.profileCompleted, // Frontend uses this to redirect
         contributorProfile: user.contributorProfile,
         participantProfile: user.participantProfile,
       },
@@ -253,6 +207,153 @@ export const login = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error during login",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Stage 2: Complete Profile (After Login)
+// @route   PUT /api/auth/complete-profile
+// @access  Private (Requires token)
+export const completeProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { contributorProfile, participantProfile } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Update profile based on role
+    if (user.role === "contributor" && contributorProfile) {
+      user.contributorProfile = contributorProfile;
+    } else if (user.role === "participant" && participantProfile) {
+      user.participantProfile = participantProfile;
+    }
+
+    user.profileCompleted = true;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile completed successfully!",
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        profileCompleted: user.profileCompleted,
+        contributorProfile: user.contributorProfile,
+        participantProfile: user.participantProfile,
+      },
+    });
+  } catch (error) {
+    console.error("Complete profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error completing profile",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Update Profile (For editing later)
+// @route   PUT /api/auth/update-profile
+// @access  Private
+export const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const updates = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Update allowed fields
+    const allowedUpdates = [
+      "firstName", "lastName", "phoneNumber", "gender", 
+      "contributorProfile", "participantProfile"
+    ];
+
+    Object.keys(updates).forEach((key) => {
+      if (allowedUpdates.includes(key)) {
+        user[key] = updates[key];
+      }
+    });
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        gender: user.gender,
+        role: user.role,
+        profileCompleted: user.profileCompleted,
+        contributorProfile: user.contributorProfile,
+        participantProfile: user.participantProfile,
+      },
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating profile",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Resend verification email
+// @route   POST /api/auth/resend-verification
+// @access  Public
+export const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+    }
+
+    const verificationToken = user.generateVerificationToken();
+    await user.save();
+
+    await sendVerificationEmail(user, verificationToken);
+
+    res.status(200).json({
+      success: true,
+      message: "Verification email sent! Please check your inbox.",
+    });
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to resend verification email",
       error: error.message,
     });
   }

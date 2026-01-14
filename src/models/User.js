@@ -4,15 +4,14 @@ import crypto from "crypto";
 
 const userSchema = new mongoose.Schema(
   {
-    // Common fields for both roles
     firstName: {
       type: String,
-      required: [true, "FirstName is required"],
+      required: [true, "First name is required"],
       trim: true,
     },
     lastName: {
       type: String,
-      required: [true, "LastName is required"],
+      required: [true, "Last name is required"],
       trim: true,
     },
     email: {
@@ -27,15 +26,35 @@ const userSchema = new mongoose.Schema(
       required: [true, "Password is required"],
       minlength: [6, "Password must be at least 6 characters"],
     },
+    gender: {
+      type: String,
+      enum: ["male", "female", "other", "prefer-not-to-say"],
+      required: [true, "Gender is required"],
+    },
+    dateOfBirth: {
+      type: Date,
+      required: [true, "Date of birth is required"],
+    },
+    identityDocument: {
+      type: String, 
+      required: [true, "Identity document is required"],
+    },
+    supportingDocument: {
+      type: String, 
+    },
     phoneNumber: {
       type: String,
       trim: true,
     },
+    
+    // Role selection (required in stage 1)
     role: {
       type: String,
       enum: ["contributor", "participant"],
       required: [true, "Role is required"],
     },
+    
+    // Verification fields
     isVerified: {
       type: Boolean,
       default: false,
@@ -46,8 +65,14 @@ const userSchema = new mongoose.Schema(
     verificationTokenExpiry: {
       type: Date,
     },
+    
+    // Profile completion tracking
+    profileCompleted: {
+      type: Boolean,
+      default: false,
+    },
 
-    // Additional fields specific to contributors
+    // Stage 2: Detailed Profile Fields (Completed after login)
     contributorProfile: {
       expertise: { type: String },
       bio: { type: String },
@@ -57,94 +82,30 @@ const userSchema = new mongoose.Schema(
       organizationType: { type: String },
     },
 
-    // Additional fields specific to participants
     participantProfile: {
       interests: [{ type: String }],
-      about: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      goals: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      countryOfResidence: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      countryOfBirth: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      placeOfBirth: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      ethnicGroup: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      language: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      languageFluent: {
-        type: [{ type: String }],
-        required: function() { return this.role === "participant"; }
-      },
-      regionalDialect: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      educationLevel: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      educationCurrentStatus: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      educationFieldOfStudy: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      educationYearCompleted: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      employmentStatus: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      employmentYearsExperience: { 
-        type: Number,
-        required: function() { return this.role === "participant"; }
-      },
-      employmentSector: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      employmentIndustry: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      employmentJobTitle: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
+      about: { type: String },
+      goals: { type: String },
+      countryOfResidence: { type: String },
+      countryOfBirth: { type: String },
+      placeOfBirth: { type: String },
+      ethnicGroup: { type: String },
+      language: { type: String },
+      languageFluent: [{ type: String }],
+      regionalDialect: { type: String },
+      educationLevel: { type: String },
+      educationCurrentStatus: { type: String },
+      educationFieldOfStudy: { type: String },
+      educationYearCompleted: { type: String },
+      employmentStatus: { type: String },
+      employmentYearsExperience: { type: Number },
+      employmentSector: { type: String },
+      employmentIndustry: { type: String },
+      employmentJobTitle: { type: String },
       linkedInProfile: { type: String },
-      availabilityToParticipate: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
-      participateHoursPerWeek: { 
-        type: Number,
-        required: function() { return this.role === "participant"; }
-      },
-      currency: { 
-        type: String,
-        required: function() { return this.role === "participant"; }
-      },
+      availabilityToParticipate: { type: String },
+      participateHoursPerWeek: { type: Number },
+      currency: { type: String },
     },
   },
   {
