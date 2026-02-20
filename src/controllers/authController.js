@@ -3,60 +3,37 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { sendVerificationEmail, sendWelcomeEmail } from "../services/email.service.js";
 
-// Generate JWT Token
 const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "30d",
-  });
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
-// @desc    Stage 1: Initial Registration (Basic Info + Documents)
+// @desc    Stage 1: Register (basic info only — no gender/dob/docs required)
 // @route   POST /api/auth/register
 // @access  Public
 export const register = async (req, res) => {
   try {
-    const { 
-      firstName, 
-      lastName, 
-      email, 
-      password, 
-      gender,
-      dateOfBirth,
-      identityDocument,
-      supportingDocument,
-      phoneNumber,
-      role 
-    } = req.body;
+    const { firstName, lastName, email, password, role } = req.body;
 
-    // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        message: "User with this email already exists" 
+        message: "User with this email already exists",
       });
     }
 
-    // Create user with Stage 1 data only
     const user = await User.create({
       firstName,
       lastName,
       email,
       password,
-      gender,
-      dateOfBirth,
-      identityDocument,
-      supportingDocument,
-      phoneNumber,
       role,
-      profileCompleted: false, // Mark as incomplete
+      profileCompleted: false,
     });
 
-    // Generate verification token
     const verificationToken = user.generateVerificationToken();
     await user.save();
 
-    // Send verification email
     try {
       await sendVerificationEmail(user, verificationToken);
     } catch (emailError) {
@@ -65,7 +42,7 @@ export const register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Please check your email to verify your account before logging in.",
+      message: "Registration successful! Please check your email to verify your account.",
       needsVerification: true,
       user: {
         email: user.email,
@@ -76,21 +53,11 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     console.error("Registration error:", error);
-    
     if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors,
-      });
+      const errors = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({ success: false, message: "Validation failed", errors });
     }
-
-    res.status(500).json({
-      success: false,
-      message: "Server error during registration",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Server error during registration", error: error.message });
   }
 };
 
@@ -100,7 +67,6 @@ export const register = async (req, res) => {
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
-
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const user = await User.findOne({
@@ -109,19 +75,14 @@ export const verifyEmail = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired verification token",
-      });
+      return res.status(400).json({ success: false, message: "Invalid or expired verification token" });
     }
 
-    // Mark user as verified
     user.isVerified = true;
     user.verificationToken = undefined;
     user.verificationTokenExpiry = undefined;
     await user.save();
 
-    // Send welcome email
     try {
       await sendWelcomeEmail(user);
     } catch (emailError) {
@@ -134,15 +95,11 @@ export const verifyEmail = async (req, res) => {
     });
   } catch (error) {
     console.error("Verification error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error during verification",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Server error during verification", error: error.message });
   }
 };
 
-// @desc    Login user
+// @desc    Login
 // @route   POST /api/auth/login
 // @access  Public
 export const login = async (req, res) => {
@@ -150,33 +107,18 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide email and password",
-      });
+      return res.status(400).json({ success: false, message: "Please provide email and password" });
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
+    if (!user || !(await user.comparePassword(password))) {
+      return res.status(401).json({ success: false, message: "Invalid email or password" });
     }
 
-    const isPasswordCorrect = await user.comparePassword(password);
-    if (!isPasswordCorrect) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
-
-    // Check if email is verified
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
-        message: "Please verify your email before logging in. Check your inbox for the verification link.",
+        message: "Please verify your email before logging in.",
         needsVerification: true,
       });
     }
@@ -197,38 +139,46 @@ export const login = async (req, res) => {
         dateOfBirth: user.dateOfBirth,
         role: user.role,
         isVerified: user.isVerified,
-        profileCompleted: user.profileCompleted, // Frontend uses this to redirect
+        profileCompleted: user.profileCompleted, // frontend checks this to redirect to complete-profile page
         contributorProfile: user.contributorProfile,
         participantProfile: user.participantProfile,
       },
     });
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error during login",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Server error during login", error: error.message });
   }
 };
 
-// @desc    Stage 2: Complete Profile (After Login)
+// @desc    Stage 2: Complete profile (enforces required fields here, not at registration)
 // @route   PUT /api/auth/complete-profile
-// @access  Private (Requires token)
+// @access  Private
 export const completeProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { contributorProfile, participantProfile } = req.body;
+    const { gender, dateOfBirth, identityDocument, supportingDocument, phoneNumber, contributorProfile, participantProfile } = req.body;
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
+    // Enforce the fields that were optional at registration
+    if (!gender || !dateOfBirth || !identityDocument) {
+      return res.status(400).json({
         success: false,
-        message: "User not found",
+        message: "Gender, date of birth, and identity document are required to complete your profile.",
       });
     }
 
-    // Update profile based on role
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Apply the stage-2 personal fields
+    user.gender = gender;
+    user.dateOfBirth = dateOfBirth;
+    user.identityDocument = identityDocument;
+    if (supportingDocument) user.supportingDocument = supportingDocument;
+    if (phoneNumber) user.phoneNumber = phoneNumber;
+
+    // Apply role-specific profile data
     if (user.role === "contributor" && contributorProfile) {
       user.contributorProfile = contributorProfile;
     } else if (user.role === "participant" && participantProfile) {
@@ -254,15 +204,11 @@ export const completeProfile = async (req, res) => {
     });
   } catch (error) {
     console.error("Complete profile error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error completing profile",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error completing profile", error: error.message });
   }
 };
 
-// @desc    Update Profile (For editing later)
+// @desc    Update profile (for later edits)
 // @route   PUT /api/auth/update-profile
 // @access  Private
 export const updateProfile = async (req, res) => {
@@ -272,22 +218,12 @@ export const updateProfile = async (req, res) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Update allowed fields
-    const allowedUpdates = [
-      "firstName", "lastName", "phoneNumber", "gender", 
-      "contributorProfile", "participantProfile"
-    ];
-
+    const allowedUpdates = ["firstName", "lastName", "phoneNumber", "gender", "contributorProfile", "participantProfile"];
     Object.keys(updates).forEach((key) => {
-      if (allowedUpdates.includes(key)) {
-        user[key] = updates[key];
-      }
+      if (allowedUpdates.includes(key)) user[key] = updates[key];
     });
 
     await user.save();
@@ -310,11 +246,7 @@ export const updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error("Update profile error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating profile",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error updating profile", error: error.message });
   }
 };
 
@@ -324,68 +256,38 @@ export const updateProfile = async (req, res) => {
 export const resendVerification = async (req, res) => {
   try {
     const { email } = req.body;
-
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
 
-    if (user.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is already verified",
-      });
-    }
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    if (user.isVerified) return res.status(400).json({ success: false, message: "Email is already verified" });
 
     const verificationToken = user.generateVerificationToken();
     await user.save();
-
     await sendVerificationEmail(user, verificationToken);
 
-    res.status(200).json({
-      success: true,
-      message: "Verification email sent! Please check your inbox.",
-    });
+    res.status(200).json({ success: true, message: "Verification email sent! Please check your inbox." });
   } catch (error) {
     console.error("Resend verification error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to resend verification email",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Failed to resend verification email", error: error.message });
   }
 };
 
-// @desc    Get current user profile
+// @desc    Get current user
 // @route   GET /api/auth/me
 // @access  Private
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
-    
-    res.status(200).json({
-      success: true,
-      user,
-    });
+    res.status(200).json({ success: true, user });
   } catch (error) {
     console.error("Get profile error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching user profile",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error fetching user profile", error: error.message });
   }
 };
 
-// @desc    Logout user
+// @desc    Logout
 // @route   POST /api/auth/logout
 // @access  Public
 export const logout = async (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Logout successful. Please delete your token on the client side.",
-  });
+  res.status(200).json({ success: true, message: "Logout successful. Please delete your token on the client side." });
 };
