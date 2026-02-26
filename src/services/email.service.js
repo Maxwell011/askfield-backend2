@@ -4,8 +4,8 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     host: "smtp.zoho.com",
     port: 587,
-    secure: false,        // false for 587 (STARTTLS)
-    requireTLS: true,     // ← add this line
+    secure: false,       
+    requireTLS: true,    
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
@@ -28,7 +28,7 @@ export const sendVerificationEmail = async (user, verificationToken) => {
         <style>
           body { font-family: Arial, sans-serif; background: #f5f5f0; margin: 0; padding: 0; }
           .wrapper { max-width: 560px; margin: 40px auto; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 20px rgba(0,0,0,0.08); }
-          .header { background: #1a1a1a; padding: 32px 40px; text-align: center; }
+          .header { background: #fbc02d; padding: 32px 40px; text-align: center; }
           .header h1 { color: #fff; margin: 0; font-size: 22px; letter-spacing: 0.5px; }
           .body { padding: 40px; color: #333; }
           .body h2 { font-size: 20px; margin: 0 0 12px; color: #1a1a1a; }
@@ -41,12 +41,12 @@ export const sendVerificationEmail = async (user, verificationToken) => {
       </head>
       <body>
         <div class="wrapper">
-          <div class="header"><h1>AskField</h1></div>
+          <div class="header"><h1>askField</h1></div>
           <div class="body">
             <h2>Hi ${user.firstName},</h2>
-            <p>Thanks for signing up as a <strong>${user.role}</strong> on AskField! Click the button below to verify your email address and activate your account.</p>
+            <p>Thanks for signing up as a <strong>${user.role}</strong> on skField! Click the button below to verify your email address and activate your account.</p>
             <div class="btn-wrap">
-              <a href="${verificationUrl}" class="btn">Join AskField</a>
+              <a href="${verificationUrl}" class="btn">Join askField</a>
             </div>
             <p>Or paste this link into your browser:</p>
             <p class="url">${verificationUrl}</p>
